@@ -1,37 +1,64 @@
-import { GoogleGenAI } from "@google/genai";
 import { PredictionTicket, PredictionItem, PredictionSource } from '../types';
 
-function getAiClient(apiKey: string): GoogleGenAI {
-    if (!apiKey) {
-        throw new Error("Gemini API key not provided.");
+const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+async function makeGeminiRequest(model: string, apiKey: string, body: object, signal?: AbortSignal) {
+    const url = `${API_BASE_URL}/${model}:generateContent?key=${apiKey}`;
+    
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal,
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: { message: `HTTP error! status: ${response.status}` } }));
+        const errorMessage = errorData?.error?.message || 'An unknown API error occurred.';
+        throw new Error(`Failed to call the Gemini API: ${errorMessage}`);
     }
-    return new GoogleGenAI({ apiKey });
+
+    return response.json();
 }
 
-async function fileToGenerativePart(file: File) {
-  const base64EncodedDataPromise = new Promise<string>((resolve) => {
+
+function base64FromFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.onloadend = () => {
+        if (reader.result) {
+            resolve((reader.result as string).split(',')[1]);
+        } else {
+            reject(new Error("Failed to read file."));
+        }
+    };
+    reader.onerror = (error) => reject(error);
     reader.readAsDataURL(file);
   });
-  return {
-    inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
-  };
 }
 
 export async function extractMatchesFromImage(file: File, apiKey: string): Promise<string[]> {
-  const ai = getAiClient(apiKey);
-  const imagePart = await fileToGenerativePart(file);
+  const base64Data = await base64FromFile(file);
   const model = 'gemini-2.5-flash';
   
   const prompt = `You are an expert OCR tool for sports betting apps. Extract the names of the matches from this screenshot. A match is in the format 'Team A vs Team B'. List only the full match names, one per line. Do not include headers, odds, timestamps, or any other text. If no matches are found, return an empty response.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: { parts: [ imagePart, { text: prompt } ] }
-  });
+  const body = {
+    contents: [
+        {
+            parts: [
+                { inlineData: { mimeType: file.type, data: base64Data } },
+                { text: prompt }
+            ]
+        }
+    ]
+  };
 
-  const text = response.text;
+  const data = await makeGeminiRequest(model, apiKey, body);
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
   if (!text.trim()) { return []; }
   return text.trim().split('\n').map(match => match.trim()).filter(Boolean);
 }
@@ -61,8 +88,40 @@ function getMasterAnalystPrompt(match: string): string {
         -   **Synthesize & Conclude:** Use web search to gather data for the five pillars and form your own expert conclusion.
         -   **Comparative Reasoning (Devil's Advocate):** You MUST consider at least two other plausible bets and briefly explain why you discarded them. You must also state the single biggest risk to your chosen prediction.
         -   **Select Prediction:** Based on your chosen persona, select a prediction.
-            -   If Cautious: Pick ONLY from "Home or Draw", "Away or Draw", "Under 4.5 goals", "Under 3.5 goals", "Over 0.5 goals". If no pick meets these extreme safety standards, you MUST predict "No Safe Bet Found".
-            -   If Value Hunter or Goals Specialist: You may use any standard betting market.
+            -   If **Cautious Analyst**: Your mandate is to be a **"Ticket Protector"**. Your goal is EXTREME risk aversion. You must follow a strict, data-driven, tiered evaluation process to select the single most stable and probable outcome. You must AVOID picking "Draw" as a standalone prediction.
+
+                **Tiered Decision Logic:**
+
+                **Tier 1 – Stability Picks (Highest Priority):** These are your primary considerations.
+                -   **Double Chance (“Home or Draw”, “Away or Draw”, “Home or Away”):** The safest fundamental pick, covering two of three outcomes.
+                -   **Draw No Bet (“Home”, “Away”):** A very secure option when a draw is a strong possibility you want to insure against.
+                -   **Home/Away Clean Sheet (Yes):** Only select this when deep analysis of recent form (last 5 games) and defensive records shows consistent clean sheets against similar-level opponents.
+
+                **Tier 2 – Controlled Defensive Picks (Moderate Safety):** Only consider these if a Tier 1 pick is not suitable.
+                -   **Under 2.5 or Under 3.5 Goals:** Only select this if your analysis of both teams’ last 5 matches shows their games average less than 2.4 total goals.
+                -   **Handicap +1 or +1.5 (for the underdog):** Only select this if the underdog shows a strong defensive record and a history of narrow losses or draws against superior teams.
+
+                **Tier 3 – Offensive Confidence Picks (Lowest Safety for Cautious Mode):** Only use these when data is overwhelmingly positive.
+                -   **Home Win (1) or Away Win (2):** Only select this if your final conviction level is 4/5 or higher (equivalent to ≥ 75% confidence).
+                -   **Over 1.5 or Over 2.5 Goals:** Only select this if your analysis shows both teams combined average more than 1.8 goals per game AND both concede often.
+                
+                **Forbidden Picks (Avoid unless ultra-high confidence ≥ 90% or 5/5 conviction):**
+                -   “Over 0.5 Goals” (too low value)
+                -   Exact Scores
+                -   Over 3.5 Goals or higher (unless justified by Tier 3 logic)
+
+                **Mandatory Safety Evaluation:**
+                Before finalizing your pick from the tiers, you MUST cross-check against these factors:
+                1.  ✅ Form Consistency (W/D/L patterns)
+                2.  ✅ Goals Per Match (For/Against averages)
+                3.  ✅ Defensive Record (Clean sheets, goals conceded)
+                4.  ✅ Motivation (home advantage, tournament pressure, etc.)
+                5.  ✅ Head-to-Head (at least last 5 games)
+                6.  ✅ Recent injuries/suspensions (key players missing)
+
+                **Downgrade Rule:** If your analysis finds that **3 or more** of these safety checks are uncertain or negative for your considered pick, you MUST downgrade your pick to a safer Tier. For example, if you considered a 'Home Win' (Tier 3) but Form, H2H, and Injuries are uncertain, you MUST downgrade to a 'Double Chance' (Tier 1) pick instead. Crucially, if you cannot find a pick that meets these extreme standards of safety, your correct and required output is "No Safe Bet Found".
+
+            -   If **Value Hunter** or **Goals Specialist**: You may use any standard betting market.
 
         **Step 4: JSON Output**
         Your conviction level (1-5) must be justified by the pillar alignment. Your final output MUST be a single, valid JSON object and nothing else. Do not use markdown.
@@ -81,25 +140,25 @@ function getMasterAnalystPrompt(match: string): string {
 }
 
 async function analyzeSingleMatch(match: string, signal: AbortSignal, apiKey: string): Promise<PredictionItem> {
-    const ai = getAiClient(apiKey);
     const model = 'gemini-2.5-flash';
     const prompt = getMasterAnalystPrompt(match);
 
-    const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: { tools: [{googleSearch: {}}] }
-    }, { signal });
+    const body = {
+        contents: [{ parts: [{ text: prompt }] }],
+        tools: [{ googleSearch: {} }]
+    };
     
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const data = await makeGeminiRequest(model, apiKey, body, signal);
+    
+    const groundingChunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources: PredictionSource[] = groundingChunks
-        .map(chunk => ({
+        .map((chunk: any) => ({
             title: chunk.web?.title || '',
             uri: chunk.web?.uri || '',
         }))
-        .filter(source => source.uri);
+        .filter((source: PredictionSource) => source.uri);
 
-    const text = response.text.trim();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text.trim() || '';
     
     try {
         const jsonMatch = text.match(/{[\s\S]*}/);
@@ -135,14 +194,14 @@ export async function analyzeMatches(
     const taskQueue = matches.map((match, index) => ({ match, index }));
 
     const worker = async () => {
-        while (taskQueue.length > 0) {
+        while (true) {
             if (signal.aborted) {
                 throw new DOMException('Analysis cancelled by user.', 'AbortError');
             }
-
+            
             const task = taskQueue.shift();
             if (!task) {
-                break;
+                break; // No more tasks in the queue
             }
             
             const { match, index } = task;
@@ -190,7 +249,6 @@ export async function analyzeMatches(
 }
 
 export async function analyzeOverallTicket(ticket: PredictionTicket, signal: AbortSignal, apiKey: string): Promise<string> {
-    const ai = getAiClient(apiKey);
     const model = 'gemini-2.5-flash';
     
     const ticketString = ticket.ticket
@@ -217,9 +275,10 @@ export async function analyzeOverallTicket(ticket: PredictionTicket, signal: Abo
         Provide your response as a single block of text. Do not use markdown formatting.
     `;
 
-    const response = await ai.models.generateContent({
-        model, contents: prompt
-    }, { signal });
+    const body = {
+        contents: [{ parts: [{ text: prompt }] }]
+    };
 
-    return response.text.trim();
+    const data = await makeGeminiRequest(model, apiKey, body, signal);
+    return data.candidates?.[0]?.content?.parts?.[0]?.text.trim() || "Could not generate overall analysis.";
 }
