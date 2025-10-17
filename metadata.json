@@ -1,0 +1,5 @@
+{
+  "name": "Sportybet AI Predictor",
+  "description": "An AI-powered web application that analyzes Sportybet match screenshots using Gemini. It extracts match details, performs in-depth analysis via web search, and generates a comprehensive prediction ticket to assist with betting decisions.",
+  "requestFramePermissions": []
+}
