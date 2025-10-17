@@ -34,6 +34,8 @@ export interface PredictionItem {
 }
 
 export interface PredictionTicket {
+  id: string;
+  savedAt?: string;
   ticket: PredictionItem[];
   overallAnalysis?: string;
   pickModeUsed?: PickMode;

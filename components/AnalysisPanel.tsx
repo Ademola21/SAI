@@ -3,6 +3,7 @@ import { AnalysisState, PredictionTicket } from '../types';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { CheckIcon } from './icons/CheckIcon';
 import { LinkIcon } from './icons/LinkIcon';
+import { SaveIcon } from './icons/SaveIcon';
 
 interface AnalysisPanelProps {
   analysisState: AnalysisState;
@@ -15,6 +16,8 @@ interface AnalysisPanelProps {
   analysisProgress: { completed: number; total: number } | null;
   isAnalyzingOverall: boolean;
   isApiKeySet: boolean;
+  onSave: () => void;
+  isTicketSaved: boolean;
 }
 
 const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
@@ -28,6 +31,8 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   analysisProgress,
   isAnalyzingOverall,
   isApiKeySet,
+  onSave,
+  isTicketSaved,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -125,7 +130,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     </button>
                 </div>
 
-                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                     {isAnalyzingOverall && (
                         <div className="text-center p-4 bg-slate-800 rounded-lg">
                             <p className="text-sm text-slate-400 animate-pulse">Performing overall ticket analysis...</p>
@@ -190,12 +195,22 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                         </div>
                     ))}
                 </div>
-                 <button
-                    onClick={onReset}
-                    className="mt-6 w-full py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
-                >
-                    Start New Analysis
-                </button>
+                <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                     <button
+                        onClick={onSave}
+                        disabled={isTicketSaved}
+                        className="flex-1 flex items-center justify-center gap-2 py-2 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <SaveIcon className="w-5 h-5"/>
+                        {isTicketSaved ? 'Saved' : 'Save Analysis'}
+                    </button>
+                    <button
+                        onClick={onReset}
+                        className="flex-1 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+                    >
+                        Start New Analysis
+                    </button>
+                </div>
             </div>
         );
 

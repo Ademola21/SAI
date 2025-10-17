@@ -9,6 +9,7 @@ import ManualEntry from './components/ManualEntry';
 import Toast from './components/Toast';
 import ApiKeyManager from './components/ApiKeyManager';
 import PickModeSelector from './components/PickModeSelector';
+import SavedTicketsPanel from './components/SavedTicketsPanel';
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string | null>(() => window.localStorage.getItem('gemini-api-key'));
@@ -24,6 +25,16 @@ const App: React.FC = () => {
       return [];
     }
   });
+  
+  const [savedTickets, setSavedTickets] = useState<PredictionTicket[]>(() => {
+    try {
+        const saved = window.localStorage.getItem('saved-tickets');
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        console.error("Failed to parse saved tickets from localStorage", error);
+        return [];
+    }
+  });
 
   const [analysisState, setAnalysisState] = useState<AnalysisState>(AnalysisState.IDLE);
   const [predictionTicket, setPredictionTicket] = useState<PredictionTicket | null>(null);
@@ -37,6 +48,10 @@ const App: React.FC = () => {
   useEffect(() => {
     window.localStorage.setItem('matches', JSON.stringify(matches));
   }, [matches]);
+  
+  useEffect(() => {
+    window.localStorage.setItem('saved-tickets', JSON.stringify(savedTickets));
+  }, [savedTickets]);
   
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -117,7 +132,12 @@ const App: React.FC = () => {
       };
 
       const result = await analyzeMatches(matches, signal, onProgress, apiKey, pickMode, selectedMarket, matches.length);
-      setPredictionTicket({...result, pickModeUsed: pickMode});
+      const ticketWithId: PredictionTicket = {
+        ...result,
+        id: `ticket-${Date.now()}`,
+        pickModeUsed: pickMode,
+      };
+      setPredictionTicket(ticketWithId);
       setAnalysisState(AnalysisState.DONE);
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -181,6 +201,35 @@ const App: React.FC = () => {
     setMatches(prevMatches => prevMatches.filter((_, index) => index !== indexToDelete));
   }, []);
   
+  const handleSaveTicket = useCallback(() => {
+    if (!predictionTicket) return;
+    if (savedTickets.some(t => t.id === predictionTicket.id)) {
+        showToast("This analysis is already saved.");
+        return;
+    }
+    const ticketToSave = { ...predictionTicket, savedAt: new Date().toISOString() };
+    setSavedTickets(prev => [ticketToSave, ...prev]);
+    showToast("Analysis saved!");
+  }, [predictionTicket, savedTickets]);
+
+  const handleDeleteTicket = useCallback((ticketId: string) => {
+    setSavedTickets(prev => prev.filter(t => t.id !== ticketId));
+    if (predictionTicket?.id === ticketId) {
+        setPredictionTicket(null);
+        setAnalysisState(AnalysisState.IDLE);
+    }
+    showToast("Saved analysis deleted.");
+  }, [predictionTicket]);
+  
+  const handleLoadTicket = useCallback((ticket: PredictionTicket) => {
+      setPredictionTicket(ticket);
+      setAnalysisState(AnalysisState.DONE);
+      setError(null);
+      setIsAnalyzingOverall(false);
+      setAnalysisProgress(null);
+  }, []);
+
+  const isCurrentTicketSaved = savedTickets.some(t => t.id === predictionTicket?.id);
   const isAppDisabled = !apiKey;
 
   return (
@@ -221,6 +270,11 @@ const App: React.FC = () => {
                   onClear={handleClearMatches}
                   onDelete={handleDeleteMatch}
               />
+              <SavedTicketsPanel
+                savedTickets={savedTickets}
+                onLoad={handleLoadTicket}
+                onDelete={handleDeleteTicket}
+              />
             </div>
             <div className="lg:sticky top-8 self-start">
               <AnalysisPanel
@@ -234,6 +288,8 @@ const App: React.FC = () => {
                 analysisProgress={analysisProgress}
                 isAnalyzingOverall={isAnalyzingOverall}
                 isApiKeySet={!!apiKey}
+                onSave={handleSaveTicket}
+                isTicketSaved={isCurrentTicketSaved}
               />
             </div>
           </main>

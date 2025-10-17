@@ -214,7 +214,7 @@ export async function analyzeMatches(
     pickMode: PickMode,
     selectedMarket: string | null,
     totalMatches: number
-): Promise<PredictionTicket> {
+): Promise<Omit<PredictionTicket, 'id' | 'savedAt'>> {
     const CONCURRENCY_LIMIT = 3;
     const results: (PredictionItem | null)[] = new Array(totalMatches).fill(null);
     let completedCount = 0;
