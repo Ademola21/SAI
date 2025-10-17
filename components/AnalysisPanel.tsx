@@ -46,7 +46,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         if (item.error) {
             return `Match: ${item.match}\nPrediction: ${item.prediction}\nReason: ${item.reasoning.main}`;
         }
-        return `Match: ${item.match}\nPrediction: ${item.prediction}\nConviction: ${'★'.repeat(item.conviction)}${'☆'.repeat(5 - item.conviction)}\nReasoning: ${item.reasoning.main}\nConsidered Alternatives: ${item.reasoning.consideredAlternatives}\nMain Risk: ${item.reasoning.devilsAdvocate}`;
+        return `Match: ${item.match}\nStrategy Used: ${item.strategyUsed}\nPrediction: ${item.prediction}\nConviction: ${'★'.repeat(item.conviction)}${'☆'.repeat(5 - item.conviction)}\nReasoning: ${item.reasoning.main}\nConsidered Alternatives: ${item.reasoning.consideredAlternatives}\nMain Risk: ${item.reasoning.devilsAdvocate}`;
     }).join('\n\n---\n\n');
 
     navigator.clipboard.writeText(ticketText).then(() => {
@@ -56,6 +56,13 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         console.error('Could not copy text: ', err);
         alert('Failed to copy ticket.');
     });
+  };
+
+  const getStrategyColor = (strategy: string) => {
+    if (strategy.toLowerCase().includes('cautious')) return 'bg-sky-500/20 text-sky-400 border-sky-500/30';
+    if (strategy.toLowerCase().includes('value')) return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+    if (strategy.toLowerCase().includes('goals')) return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
+    return 'bg-slate-700 text-slate-300';
   };
 
   const renderContent = () => {
@@ -133,7 +140,14 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     {predictionTicket.ticket.map((item, index) => (
                         <div key={index} className={`p-4 rounded-lg shadow-lg ${item.error ? 'bg-red-900/30 border border-red-500/50' : 'bg-slate-800'}`}>
                             <h4 className="font-bold text-slate-100">{item.match}</h4>
-                            <p className={`font-semibold mt-1 ${item.error ? 'text-red-400' : 'text-cyan-400'}`}>{item.prediction}</p>
+                            
+                            {!item.error && (
+                                <div className={`inline-block px-2 py-0.5 mt-1.5 text-xs font-semibold rounded-full border ${getStrategyColor(item.strategyUsed)}`}>
+                                    Strategy: {item.strategyUsed}
+                                </div>
+                            )}
+
+                            <p className={`font-semibold mt-2 ${item.error ? 'text-red-400' : 'text-cyan-400'}`}>{item.prediction}</p>
                             
                             {!item.error && (
                                 <>

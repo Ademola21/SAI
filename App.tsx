@@ -1,12 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { AnalysisState, PredictionTicket, AIStrategy } from './types';
+import { AnalysisState, PredictionTicket } from './types';
 import { extractMatchesFromImage, analyzeMatches, analyzeOverallTicket } from './services/geminiService';
 import Header from './components/Header';
 import ImageUploader from './components/ImageUploader';
 import MatchList from './components/MatchList';
 import AnalysisPanel from './components/AnalysisPanel';
 import ManualEntry from './components/ManualEntry';
-import StrategySelector from './components/StrategySelector';
 import Toast from './components/Toast';
 import ApiKeyManager from './components/ApiKeyManager';
 
@@ -28,7 +27,6 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState<{ completed: number; total: number } | null>(null);
   const [isAnalyzingOverall, setIsAnalyzingOverall] = useState(false);
-  const [aiStrategy, setAiStrategy] = useState<AIStrategy>('CAUTIOUS');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const analysisAbortController = useRef<AbortController | null>(null);
@@ -111,7 +109,7 @@ const App: React.FC = () => {
         setAnalysisProgress({ completed, total });
       };
 
-      const result = await analyzeMatches(matches, aiStrategy, signal, onProgress, apiKey);
+      const result = await analyzeMatches(matches, signal, onProgress, apiKey);
       setPredictionTicket(result);
       setAnalysisState(AnalysisState.DONE);
     } catch (err: any) {
@@ -126,7 +124,7 @@ const App: React.FC = () => {
     } finally {
         analysisAbortController.current = null;
     }
-  }, [matches, aiStrategy, apiKey]);
+  }, [matches, apiKey]);
 
   useEffect(() => {
     const hasRunOverallAnalysis = !!predictionTicket?.overallAnalysis;
@@ -201,11 +199,6 @@ const App: React.FC = () => {
               />
               <ManualEntry 
                 onAddMatch={handleAddManualMatch}
-                disabled={isAppDisabled}
-              />
-              <StrategySelector
-                selectedStrategy={aiStrategy}
-                onStrategyChange={setAiStrategy}
                 disabled={isAppDisabled}
               />
               <MatchList 

@@ -6,8 +6,6 @@ export enum AnalysisState {
   ERROR = 'ERROR',
 }
 
-export type AIStrategy = 'CAUTIOUS' | 'VALUE_HUNTER' | 'GOALS_SPECIALIST';
-
 export interface PredictionSource {
   title: string;
   uri: string;
@@ -25,6 +23,7 @@ export interface PredictionItem {
   conviction: number;
   reasoning: PredictionReasoning;
   sources: PredictionSource[];
+  strategyUsed: string;
   error?: boolean;
 }
 
