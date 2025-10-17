@@ -3,9 +3,10 @@ import { PlusIcon } from './icons/PlusIcon';
 
 interface ManualEntryProps {
   onAddMatch: (match: string) => void;
+  disabled: boolean;
 }
 
-const ManualEntry: React.FC<ManualEntryProps> = ({ onAddMatch }) => {
+const ManualEntry: React.FC<ManualEntryProps> = ({ onAddMatch, disabled }) => {
   const [match, setMatch] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -28,11 +29,13 @@ const ManualEntry: React.FC<ManualEntryProps> = ({ onAddMatch }) => {
           value={match}
           onChange={(e) => setMatch(e.target.value)}
           placeholder="e.g., Man City vs Arsenal"
-          className="flex-grow w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          className="flex-grow w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed"
+          disabled={disabled}
         />
         <button
           type="submit"
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg shadow-md hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 focus:ring-offset-slate-900 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
+          disabled={disabled || !match.trim()}
         >
           <PlusIcon className="w-5 h-5"/>
           Add Match

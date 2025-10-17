@@ -13,11 +13,17 @@ export interface PredictionSource {
   uri: string;
 }
 
+export interface PredictionReasoning {
+  main: string;
+  devilsAdvocate: string;
+  consideredAlternatives: string;
+}
+
 export interface PredictionItem {
   match: string;
   prediction: string;
-  confidence: number;
-  reasoning: string;
+  conviction: number;
+  reasoning: PredictionReasoning;
   sources: PredictionSource[];
   error?: boolean;
 }

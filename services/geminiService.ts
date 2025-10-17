@@ -1,11 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
-import { PredictionTicket, PredictionItem, AIStrategy, PredictionSource } from '../types';
+import { PredictionTicket, PredictionItem, AIStrategy, PredictionSource, PredictionReasoning } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set");
+function getAiClient(apiKey: string): GoogleGenAI {
+    if (!apiKey) {
+        throw new Error("Gemini API key not provided.");
+    }
+    return new GoogleGenAI({ apiKey });
 }
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 async function fileToGenerativePart(file: File) {
   const base64EncodedDataPromise = new Promise<string>((resolve) => {
@@ -18,7 +19,8 @@ async function fileToGenerativePart(file: File) {
   };
 }
 
-export async function extractMatchesFromImage(file: File): Promise<string[]> {
+export async function extractMatchesFromImage(file: File, apiKey: string): Promise<string[]> {
+  const ai = getAiClient(apiKey);
   const imagePart = await fileToGenerativePart(file);
   const model = 'gemini-2.5-flash';
   
@@ -35,19 +37,36 @@ export async function extractMatchesFromImage(file: File): Promise<string[]> {
 }
 
 function getPromptForStrategy(match: string, strategy: AIStrategy): string {
-    const baseAnalysis = `
+    const baseAnalysisFramework = `
+        As a world-class football analyst, you must evaluate this match based on our five pillars of analysis:
+        1.  **Recent Form (Last 5 Games):** Analyze wins, losses, goals scored/conceded. Is there clear momentum?
+        2.  **Head-to-Head (H2H) History:** Look for patterns of dominance or recurring outcomes (e.g., always low-scoring).
+        3.  **Key Player Analysis:** Identify significant injuries, suspensions, or in-form star players that could heavily influence the game.
+        4.  **Match Context & Motivation:** Is this a cup final, a dead-rubber league game, or a relegation battle? What are the stakes?
+        5.  **Tactical Matchup:** Compare styles. Does one team's high-press counter the other's build-from-the-back style?
+
         Your analytical process is as follows:
-        1.  **Synthesize Data:** Use your web search capabilities to gather data from multiple sources on form, H2H, player news, and team stats. Do not trust a single source. Cross-reference the information to form a holistic view.
-        2.  **Perform Your Own Analysis:** Based on the synthesized data, perform your own deep analysis. Identify the core strengths and weaknesses of each team. What is the most likely narrative of this match? Is it a high-scoring affair, a tight defensive battle, or a one-sided victory? Your analysis is your own; you do not simply repeat what you find on web pages.
+        1.  **Synthesize Data:** Use web search to gather data for all five pillars. Cross-reference information to form a holistic view.
+        2.  **Form an Expert Conclusion:** Based on your synthesis of the five pillars, perform your own deep analysis.
+        3.  **Comparative Reasoning (Devil's Advocate):** Before finalizing your pick, you MUST consider at least two other plausible bets and briefly explain why you discarded them. You must also state the single biggest risk to your chosen prediction.
     `;
 
     const jsonStructure = `
+        Your conviction level (from 1 to 5) must be justified by the alignment of the analytical pillars:
+        -   **5/5 Conviction:** All five pillars strongly point to the same outcome.
+        -   **3/5 Conviction:** The pillars are mixed (e.g., Form points one way, but H2H points another).
+        -   **1/5 Conviction:** The match is highly unpredictable with conflicting signals.
+
         IMPORTANT: Your final output MUST be a single, valid JSON object and nothing else. Do not add any text before or after the JSON object. Do not use markdown backticks. The JSON object must strictly follow this structure:
         {
             "match": "The original match name string",
             "prediction": "Your specific prediction string, conforming to the allowed formats for your strategy.",
-            "confidence": A number from 1 to 5 (integer),
-            "reasoning": "A concise summary (2-3 sentences) explaining the rationale for your expert, data-driven pick."
+            "conviction": A number from 1 to 5 (integer), based on the pillar alignment,
+            "reasoning": {
+                "main": "A concise summary (2-3 sentences) explaining your rationale, explicitly mentioning which pillars most heavily influenced your decision.",
+                "consideredAlternatives": "Briefly state two other bets you considered and why you rejected them.",
+                "devilsAdvocate": "State the single biggest risk or counter-argument to your chosen prediction."
+            }
         }
     `;
     
@@ -121,62 +140,29 @@ function getPromptForStrategy(match: string, strategy: AIStrategy): string {
     `;
 
     const goalsPredictionMarkets = `
-        - Over 0.5 goals
-        - Over 1.5 goals
-        - Over 2.5 goals
-        - Over 3.5 goals
-        - Over 4.5 goals
-        - Under 0.5 goals
-        - Under 1.5 goals
-        - Under 2.5 goals
-        - Under 3.5 goals
-        - Under 4.5 goals
-        - Both Teams To Score (Yes)
-        - Both Teams To Score (No)
-        - Home Over 0.5 goals
-        - Home Over 1.5 goals
-        - Home Over 2.5 goals
-        - Away Over 0.5 goals
-        - Away Over 1.5 goals
-        - Away Over 2.5 goals
-        - First Half Over 0.5
-        - First Half Over 1.5
-        - First Half Under 0.5
-        - First Half Under 1.5
-        - Second Half Over 0.5
-        - Second Half Over 1.5
-        - Second Half Under 0.5
-        - Second Half Under 1.5
-        - Clean Sheet Home (Yes)
-        - Clean Sheet Away (Yes)
-        - Team To Score First – Home
-        - Team To Score First – Away
-        - Win To Nil – Home
-        - Win To Nil – Away
-        - Goal in Both Halves (Yes)
-        - Goal in Both Halves (No)
-        - Correct Score (e.g., "Correct Score: 2-1")
-        - Exact Goals – 0 goals
-        - Exact Goals – 1 goal
-        - Exact Goals – 2 goals
-        - Exact Goals – 3 goals
-        - Exact Goals – 4+ goals
-        - Both Halves Over 0.5
-        - Both Halves Over 1.5
+        - Over 0.5 goals to Over 4.5 goals
+        - Under 0.5 goals to Under 4.5 goals
+        - Both Teams To Score (Yes/No)
+        - Home/Away Over/Under 0.5/1.5/2.5 goals
+        - First/Second Half Over/Under 0.5/1.5 goals
+        - Clean Sheet Home/Away (Yes)
+        - Team To Score First – Home/Away
+        - Win To Nil – Home/Away
+        - Goal in Both Halves (Yes/No)
+        - Correct Score, Exact Goals, Both Halves Over/Under
     `;
 
     switch (strategy) {
         case 'VALUE_HUNTER':
             return `
-                You are a sharp sports betting analyst AI, an expert at finding "value" bets where the perceived odds are higher than the actual probability.
+                You are a sharp sports betting analyst AI, an expert at finding "value" bets.
 
                 Analyze the following match:
                 - ${match}
 
-                ${baseAnalysis}
-                3.  **Identify Value:** Your task is to find a bet that offers good value, not just the most likely outcome. This may involve looking at handicaps, specific goal totals, or other non-mainstream markets if you find a statistical edge. Your reasoning must justify why you believe this is a value bet compared to market expectations.
-                4.  **Select Prediction Format:** Your final prediction **MUST** be chosen from the following list of allowed formats:
-                    ${allPredictionMarkets}
+                ${baseAnalysisFramework}
+                Your task is to find a bet that offers good value, not just the most likely outcome. Your final prediction **MUST** be chosen from the following list:
+                ${allPredictionMarkets}
 
                 ${jsonStructure}
             `;
@@ -184,35 +170,28 @@ function getPromptForStrategy(match: string, strategy: AIStrategy): string {
             return `
                 You are a specialist sports betting analyst AI with a deep focus on goals markets. 
 
-                Analyze the following match with the primary goal of finding the most probable goals-related bet:
+                Analyze the following match:
                 - ${match}
 
-                ${baseAnalysis}
-                3.  **Find the Goals Angle:** Focus your analysis on scoring and defensive capabilities.
-                4.  **Select Prediction Format:** Your final prediction **MUST** be chosen from this exclusive list of goals-related markets:
-                    ${goalsPredictionMarkets}
+                ${baseAnalysisFramework}
+                Your final prediction **MUST** be chosen from this exclusive list of goals-related markets:
+                ${goalsPredictionMarkets}
 
                 ${jsonStructure}
             `;
-        case 'CAUTIOUS': // Ultra-Cautious Analyst (default)
+        case 'CAUTIOUS': // Ultra-Risk-Averse Analyst
         default:
             return `
-                You are an AI analyst with an extreme, almost paranoid, aversion to risk. Your ONLY objective is to identify a single betting outcome that is so overwhelmingly probable it is almost a certainty. You are not trying to find value or decent odds; you are trying to find the safest possible pick, even if the implied odds are very low.
+                You are an AI analyst with an extreme, almost paranoid, aversion to risk. Your ONLY objective is to use the Five Pillars of Analysis to identify a single betting outcome that is so overwhelmingly probable it is almost a certainty.
 
                 Analyze the following match:
                 - ${match}
                 
-                ${baseAnalysis}
-                3.  **Apply Ultra-Safe Filter:** You must adhere to these strict rules:
-                    -   **DO NOT** predict a specific winner (e.g., "Team A to Win"). This is too risky.
-                    -   **DO NOT** predict an exact score.
-                    -   Your prediction **MUST** come from this exclusive list of ultra-low-risk markets:
-                        *   **Double Chance (e.g., "Home or Draw")**: If a team is overwhelmingly dominant.
-                        *   **Draw No Bet (e.g., "Draw No Bet - Home")**: A very strong alternative to Double Chance.
-                        *   **Over 0.5 Total Goals**: If there is almost no conceivable scenario where the match ends 0-0. This is a primary consideration.
-                        *   **A dominant team to score Over 0.5 Goals (e.g., "Home Over 0.5 goals")**: If a top-tier team is playing a much weaker opponent.
-                        *   **Under [High Number] Goals (e.g., "Under 5.5 goals")**: If both teams are extremely defensive and low-scoring.
-                4.  **Honest Assessment:** If, after your deep analysis, you cannot find a single pick that meets these extreme safety standards, your prediction **MUST BE** "No Safe Bet Found". In this case, your reasoning should explain why all potential bets carry too much risk.
+                ${baseAnalysisFramework}
+                You must adhere to these strict rules:
+                -   **Forbidden Bets:** You are forbidden from predicting a specific winner (e.g., "Team A to Win") or an exact score.
+                -   **Select from this Exclusive Safe List:** Based on your deep analysis, your prediction MUST be one of the following formats: "Home or Draw", "Away or Draw", "Under 4.5 goals", "Under 3.5 goals", "Over 0.5 goals", "Home Over 0.5 goals", "Away Over 0.5 goals".
+                -   **Honest Assessment:** If, after your analysis, you cannot find a pick that meets these extreme safety standards, your prediction **MUST BE** "No Safe Bet Found".
 
                 ${jsonStructure}
             `;
@@ -220,7 +199,8 @@ function getPromptForStrategy(match: string, strategy: AIStrategy): string {
 }
 
 
-async function analyzeSingleMatch(match: string, strategy: AIStrategy, signal: AbortSignal): Promise<PredictionItem> {
+async function analyzeSingleMatch(match: string, strategy: AIStrategy, signal: AbortSignal, apiKey: string): Promise<PredictionItem> {
+    const ai = getAiClient(apiKey);
     const model = 'gemini-2.5-flash';
     const prompt = getPromptForStrategy(match, strategy);
 
@@ -247,9 +227,9 @@ async function analyzeSingleMatch(match: string, strategy: AIStrategy, signal: A
         const jsonString = jsonMatch[0];
         const result = JSON.parse(jsonString);
         
-        if (result && result.match && result.prediction && typeof result.confidence === 'number' && result.reasoning) {
-            result.confidence = Math.round(result.confidence);
-            result.sources = sources; // Add the extracted sources
+        if (result && result.match && result.prediction && typeof result.conviction === 'number' && result.reasoning && result.reasoning.main && result.reasoning.devilsAdvocate && result.reasoning.consideredAlternatives) {
+            result.conviction = Math.round(result.conviction);
+            result.sources = sources;
             return result as PredictionItem;
         }
         throw new Error(`Invalid JSON structure received for match "${match}".`);
@@ -264,53 +244,76 @@ export async function analyzeMatches(
     matches: string[],
     strategy: AIStrategy,
     signal: AbortSignal,
-    onProgress: (completed: number, total: number) => void
+    onProgress: (completed: number, total: number) => void,
+    apiKey: string,
 ): Promise<PredictionTicket> {
-    const ticketItems: PredictionItem[] = [];
-    let completedCount = 0;
+    const CONCURRENCY_LIMIT = 3;
     const totalMatches = matches.length;
+    const results: (PredictionItem | null)[] = new Array(totalMatches).fill(null);
+    let completedCount = 0;
+    let matchIndex = 0;
 
-    for (const match of matches) {
-        if (signal.aborted) {
-            throw new DOMException('Analysis cancelled by user.', 'AbortError');
-        }
-
-        try {
-            const result = await analyzeSingleMatch(match, strategy, signal);
-            ticketItems.push(result);
-        } catch (error) {
-            // Don't throw if the request was aborted, just add the error item
+    const worker = async () => {
+        while (matchIndex < totalMatches) {
             if (signal.aborted) {
-                 throw new DOMException('Analysis cancelled by user.', 'AbortError');
+                throw new DOMException('Analysis cancelled by user.', 'AbortError');
             }
-            console.error(`Analysis failed for match: ${match}`, error);
-            ticketItems.push({
-                match: match,
-                prediction: "Analysis Failed",
-                confidence: 0,
-                reasoning: (error instanceof Error) ? error.message : "An unknown error occurred.",
-                sources: [],
-                error: true
-            });
-        }
 
-        completedCount++;
-        onProgress(completedCount, totalMatches);
-    }
-    
+            const currentIndex = matchIndex++;
+            if (currentIndex >= totalMatches) {
+                break;
+            }
+            
+            const match = matches[currentIndex];
+
+            try {
+                const result = await analyzeSingleMatch(match, strategy, signal, apiKey);
+                results[currentIndex] = result;
+            } catch (error) {
+                if (signal.aborted) {
+                    throw new DOMException('Analysis cancelled by user.', 'AbortError');
+                }
+                
+                const reasoningText = (error instanceof Error) ? error.message : "An unknown error occurred.";
+                results[currentIndex] = {
+                    match: match,
+                    prediction: "Analysis Failed",
+                    conviction: 0,
+                    reasoning: {
+                        main: reasoningText,
+                        devilsAdvocate: 'N/A',
+                        consideredAlternatives: 'N/A'
+                    },
+                    sources: [],
+                    error: true
+                };
+            } finally {
+                if (!signal.aborted) {
+                    completedCount++;
+                    onProgress(completedCount, totalMatches);
+                }
+            }
+        }
+    };
+
+    const workers = Array(CONCURRENCY_LIMIT).fill(null).map(() => worker());
+    await Promise.all(workers);
+
     if (signal.aborted) {
         throw new DOMException('Analysis cancelled by user.', 'AbortError');
     }
 
-    return { ticket: ticketItems };
+    const finalTicketItems = results.filter((item): item is PredictionItem => item !== null);
+    return { ticket: finalTicketItems };
 }
 
-export async function analyzeOverallTicket(ticket: PredictionTicket, signal: AbortSignal): Promise<string> {
+export async function analyzeOverallTicket(ticket: PredictionTicket, signal: AbortSignal, apiKey: string): Promise<string> {
+    const ai = getAiClient(apiKey);
     const model = 'gemini-2.5-flash';
     
     const ticketString = ticket.ticket
         .filter(item => !item.error)
-        .map(item => `- ${item.match}: ${item.prediction} (Confidence: ${item.confidence}/5)`)
+        .map(item => `- ${item.match}: ${item.prediction} (Conviction: ${item.conviction}/5)`)
         .join('\n');
 
     if (!ticketString) {

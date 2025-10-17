@@ -14,6 +14,7 @@ interface AnalysisPanelProps {
   hasMatches: boolean;
   analysisProgress: { completed: number; total: number } | null;
   isAnalyzingOverall: boolean;
+  isApiKeySet: boolean;
 }
 
 const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
@@ -26,6 +27,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   hasMatches,
   analysisProgress,
   isAnalyzingOverall,
+  isApiKeySet,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -42,9 +44,9 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
     ticketText += predictionTicket.ticket.map(item => {
         if (item.error) {
-            return `Match: ${item.match}\nPrediction: ${item.prediction}\nReason: ${item.reasoning}`;
+            return `Match: ${item.match}\nPrediction: ${item.prediction}\nReason: ${item.reasoning.main}`;
         }
-        return `Match: ${item.match}\nPrediction: ${item.prediction}\nConfidence: ${'★'.repeat(item.confidence)}${'☆'.repeat(5 - item.confidence)}\nReasoning: ${item.reasoning}`;
+        return `Match: ${item.match}\nPrediction: ${item.prediction}\nConviction: ${'★'.repeat(item.conviction)}${'☆'.repeat(5 - item.conviction)}\nReasoning: ${item.reasoning.main}\nConsidered Alternatives: ${item.reasoning.consideredAlternatives}\nMain Risk: ${item.reasoning.devilsAdvocate}`;
     }).join('\n\n---\n\n');
 
     navigator.clipboard.writeText(ticketText).then(() => {
@@ -136,16 +138,21 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                             {!item.error && (
                                 <>
                                     <div className="flex items-center my-2">
-                                        <span className="text-sm text-slate-400 mr-2">Confidence:</span>
+                                        <span className="text-sm text-slate-400 mr-2">Conviction:</span>
                                         <div className="flex">
                                             {Array.from({ length: 5 }).map((_, i) => (
-                                                <svg key={i} className={`w-5 h-5 ${i < item.confidence ? 'text-yellow-400' : 'text-slate-600'}`} fill="currentColor" viewBox="0 0 20 20">
+                                                <svg key={i} className={`w-5 h-5 ${i < item.conviction ? 'text-yellow-400' : 'text-slate-600'}`} fill="currentColor" viewBox="0 0 20 20">
                                                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                                                 </svg>
                                             ))}
                                         </div>
                                     </div>
-                                    <p className="text-sm text-slate-400">{item.reasoning}</p>
+                                    <p className="text-sm text-slate-400">{item.reasoning.main}</p>
+
+                                    <div className="mt-3 text-xs text-slate-500 space-y-2 border-l-2 border-slate-700 pl-3">
+                                        <p><span className="font-semibold text-slate-400">Considered Alternatives:</span> {item.reasoning.consideredAlternatives}</p>
+                                        <p><span className="font-semibold text-red-400">Main Risk:</span> {item.reasoning.devilsAdvocate}</p>
+                                    </div>
 
                                     {item.sources && item.sources.length > 0 && (
                                         <details className="mt-3 group">
@@ -168,7 +175,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                             )}
 
                             {item.error && (
-                                <p className="text-sm text-red-300 mt-2">{item.reasoning}</p>
+                                <p className="text-sm text-red-300 mt-2">{item.reasoning.main}</p>
                             )}
                         </div>
                     ))}
@@ -199,15 +206,19 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       default: // IDLE
         return (
             <div className="text-center p-8">
-                <h3 className="text-xl font-semibold text-slate-200">Ready for Analysis</h3>
+                <h3 className="text-xl font-semibold text-slate-200">
+                    {isApiKeySet ? 'Ready for Analysis' : 'API Key Required'}
+                </h3>
                 <p className="text-slate-400 mt-2">
-                    {hasMatches 
-                        ? "Press the button below to start the AI-powered prediction." 
-                        : "Upload screenshots or add a match manually to build your list."}
+                    {!isApiKeySet 
+                        ? "Please set your Gemini API key above to enable analysis."
+                        : hasMatches 
+                            ? "Press the button below to start the AI-powered prediction." 
+                            : "Upload screenshots or add a match manually to build your list."}
                 </p>
                 <button
                     onClick={onStart}
-                    disabled={!hasMatches || analysisState !== AnalysisState.IDLE}
+                    disabled={!hasMatches || analysisState !== AnalysisState.IDLE || !isApiKeySet}
                     className="mt-6 px-8 py-3 bg-emerald-600 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 focus:ring-offset-slate-900 disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed transition-all transform hover:scale-105"
                 >
                     Start Analysis

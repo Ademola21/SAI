@@ -8,8 +8,11 @@ import AnalysisPanel from './components/AnalysisPanel';
 import ManualEntry from './components/ManualEntry';
 import StrategySelector from './components/StrategySelector';
 import Toast from './components/Toast';
+import ApiKeyManager from './components/ApiKeyManager';
 
 const App: React.FC = () => {
+  const [apiKey, setApiKey] = useState<string | null>(() => window.localStorage.getItem('gemini-api-key'));
+
   const [matches, setMatches] = useState<string[]>(() => {
     try {
       const savedMatches = window.localStorage.getItem('matches');
@@ -38,12 +41,27 @@ const App: React.FC = () => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
   };
+  
+  const handleApiKeySave = (newKey: string) => {
+    window.localStorage.setItem('gemini-api-key', newKey);
+    setApiKey(newKey);
+    showToast("API Key saved successfully!");
+  };
+
+  const handleApiKeyClear = () => {
+      window.localStorage.removeItem('gemini-api-key');
+      setApiKey(null);
+  };
 
   const handleImagesUpload = useCallback(async (files: File[]) => {
+    if (!apiKey) {
+        showToast("Please set your API key before uploading images.");
+        return;
+    };
     setAnalysisState(AnalysisState.EXTRACTING);
     setError(null);
     try {
-      const extractionPromises = files.map(file => extractMatchesFromImage(file));
+      const extractionPromises = files.map(file => extractMatchesFromImage(file, apiKey));
       const results = await Promise.all(extractionPromises);
       const newMatches = results.flat();
       
@@ -62,12 +80,12 @@ const App: React.FC = () => {
       }
 
       setAnalysisState(AnalysisState.IDLE);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Failed to extract matches from the image. Please try a clearer screenshot.');
+      setError(err.message || 'Failed to extract matches from the image. Please try a clearer screenshot.');
       setAnalysisState(AnalysisState.ERROR);
     }
-  }, []);
+  }, [apiKey]);
 
   const handleAddManualMatch = useCallback((match: string) => {
     if (match && !matches.includes(match)) {
@@ -78,7 +96,7 @@ const App: React.FC = () => {
   }, [matches]);
 
   const handleStartAnalysis = useCallback(async () => {
-    if (matches.length === 0) return;
+    if (matches.length === 0 || !apiKey) return;
 
     setAnalysisState(AnalysisState.ANALYZING);
     setError(null);
@@ -93,7 +111,7 @@ const App: React.FC = () => {
         setAnalysisProgress({ completed, total });
       };
 
-      const result = await analyzeMatches(matches, aiStrategy, signal, onProgress);
+      const result = await analyzeMatches(matches, aiStrategy, signal, onProgress, apiKey);
       setPredictionTicket(result);
       setAnalysisState(AnalysisState.DONE);
     } catch (err: any) {
@@ -102,22 +120,23 @@ const App: React.FC = () => {
         setAnalysisState(AnalysisState.IDLE);
       } else {
         console.error(err);
-        setError('An error occurred during analysis. The model may be unavailable or the request timed out. Please try again.');
+        setError(err.message || 'An error occurred during analysis. The model may be unavailable or the request timed out. Please try again.');
         setAnalysisState(AnalysisState.ERROR);
       }
     } finally {
         analysisAbortController.current = null;
     }
-  }, [matches, aiStrategy]);
+  }, [matches, aiStrategy, apiKey]);
 
   useEffect(() => {
     const hasRunOverallAnalysis = !!predictionTicket?.overallAnalysis;
     if (analysisState === AnalysisState.DONE && predictionTicket && !hasRunOverallAnalysis && !isAnalyzingOverall) {
       const performOverallAnalysis = async () => {
+        if (!apiKey) return;
         setIsAnalyzingOverall(true);
         try {
           const controller = new AbortController(); 
-          const summary = await analyzeOverallTicket(predictionTicket, controller.signal);
+          const summary = await analyzeOverallTicket(predictionTicket, controller.signal, apiKey);
           setPredictionTicket(prev => prev ? { ...prev, overallAnalysis: summary } : null);
         } catch (err) {
           console.error("Failed to get overall ticket analysis:", err);
@@ -127,7 +146,7 @@ const App: React.FC = () => {
       };
       performOverallAnalysis();
     }
-  }, [analysisState, predictionTicket, isAnalyzingOverall]);
+  }, [analysisState, predictionTicket, isAnalyzingOverall, apiKey]);
 
   const handleCancelAnalysis = useCallback(() => {
     if (analysisAbortController.current) {
@@ -156,6 +175,8 @@ const App: React.FC = () => {
   const handleDeleteMatch = useCallback((indexToDelete: number) => {
     setMatches(prevMatches => prevMatches.filter((_, index) => index !== indexToDelete));
   }, []);
+  
+  const isAppDisabled = !apiKey;
 
   return (
     <>
@@ -163,16 +184,29 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-slate-900 font-sans p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
           <Header />
-          <main className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="mt-6">
+            <ApiKeyManager 
+              apiKey={apiKey}
+              onSave={handleApiKeySave}
+              onClear={handleApiKeyClear}
+            />
+          </div>
+
+          <main className={`mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8 ${isAppDisabled ? 'opacity-40 pointer-events-none' : ''}`}>
             <div className="flex flex-col gap-6">
               <ImageUploader 
                 onImagesUpload={handleImagesUpload} 
                 isExtracting={analysisState === AnalysisState.EXTRACTING}
+                disabled={isAppDisabled}
               />
-              <ManualEntry onAddMatch={handleAddManualMatch}/>
+              <ManualEntry 
+                onAddMatch={handleAddManualMatch}
+                disabled={isAppDisabled}
+              />
               <StrategySelector
                 selectedStrategy={aiStrategy}
                 onStrategyChange={setAiStrategy}
+                disabled={isAppDisabled}
               />
               <MatchList 
                   matches={matches} 
@@ -191,6 +225,7 @@ const App: React.FC = () => {
                 hasMatches={matches.length > 0}
                 analysisProgress={analysisProgress}
                 isAnalyzingOverall={isAnalyzingOverall}
+                isApiKeySet={!!apiKey}
               />
             </div>
           </main>

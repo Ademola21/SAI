@@ -5,9 +5,10 @@ import { PlusIcon } from './icons/PlusIcon';
 interface ImageUploaderProps {
   onImagesUpload: (files: File[]) => void;
   isExtracting: boolean;
+  disabled: boolean;
 }
 
-const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesUpload, isExtracting }) => {
+const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesUpload, isExtracting, disabled }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -26,25 +27,28 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesUpload, isExtract
   const handleDragEvents = useCallback((e: React.DragEvent<HTMLDivElement>, isEntering: boolean) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(isEntering);
-  }, []);
+    if (!disabled) {
+      setIsDragging(isEntering);
+    }
+  }, [disabled]);
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    if (disabled) return;
+    
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-        // Fix: Explicitly type `file` as `File` to fix type inference issue.
         const imageFiles = Array.from(files).filter((file: File) => file.type.startsWith('image/'));
         if (imageFiles.length > 0) {
             onImagesUpload(imageFiles);
         }
     }
-  }, [onImagesUpload]);
+  }, [onImagesUpload, disabled]);
 
   return (
-    <div className={`bg-slate-800/50 border-2 border-dashed rounded-xl p-6 transition-all duration-300 hover:border-cyan-400 ${isDragging ? 'border-cyan-400' : 'border-slate-600'}`}
+    <div className={`bg-slate-800/50 border-2 border-dashed rounded-xl p-6 transition-all duration-300 ${disabled ? 'cursor-not-allowed' : 'hover:border-cyan-400'} ${isDragging ? 'border-cyan-400' : 'border-slate-600'}`}
         onDragEnter={(e) => handleDragEvents(e, true)}
         onDragLeave={(e) => handleDragEvents(e, false)}
         onDragOver={(e) => handleDragEvents(e, true)}
@@ -56,7 +60,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesUpload, isExtract
         onChange={handleFileChange}
         className="hidden"
         accept="image/*"
-        disabled={isExtracting}
+        disabled={isExtracting || disabled}
         multiple // Allow multiple file selection
       />
       <div className="text-center">
@@ -69,7 +73,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesUpload, isExtract
         <p className="text-xs text-slate-500 mt-1">You can select multiple images</p>
         <button
           onClick={handleClick}
-          disabled={isExtracting}
+          disabled={isExtracting || disabled}
           className="mt-4 inline-flex items-center gap-2 px-6 py-2 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 focus:ring-offset-slate-900 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
         >
           {isExtracting ? (

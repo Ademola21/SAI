@@ -4,6 +4,7 @@ import { AIStrategy } from '../types';
 interface StrategySelectorProps {
   selectedStrategy: AIStrategy;
   onStrategyChange: (strategy: AIStrategy) => void;
+  disabled: boolean;
 }
 
 const strategies: { id: AIStrategy, name: string, description: string }[] = [
@@ -12,7 +13,7 @@ const strategies: { id: AIStrategy, name: string, description: string }[] = [
     { id: 'GOALS_SPECIALIST', name: 'Goals Specialist', description: 'Focuses only on goals-related markets.' },
 ];
 
-const StrategySelector: React.FC<StrategySelectorProps> = ({ selectedStrategy, onStrategyChange }) => {
+const StrategySelector: React.FC<StrategySelectorProps> = ({ selectedStrategy, onStrategyChange, disabled }) => {
   return (
     <div className="bg-slate-800/50 rounded-xl p-4">
         <label htmlFor="strategy-select" className="block text-sm font-medium text-slate-300 mb-2">
@@ -22,7 +23,8 @@ const StrategySelector: React.FC<StrategySelectorProps> = ({ selectedStrategy, o
             id="strategy-select"
             value={selectedStrategy}
             onChange={(e) => onStrategyChange(e.target.value as AIStrategy)}
-            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed"
+            disabled={disabled}
         >
             {strategies.map(strategy => (
                 <option key={strategy.id} value={strategy.id}>
