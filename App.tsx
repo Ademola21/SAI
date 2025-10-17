@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { AnalysisState, PredictionTicket } from './types';
+import { AnalysisState, PredictionTicket, PickMode } from './types';
 import { extractMatchesFromImage, analyzeMatches, analyzeOverallTicket } from './services/geminiService';
 import Header from './components/Header';
 import ImageUploader from './components/ImageUploader';
@@ -8,9 +8,12 @@ import AnalysisPanel from './components/AnalysisPanel';
 import ManualEntry from './components/ManualEntry';
 import Toast from './components/Toast';
 import ApiKeyManager from './components/ApiKeyManager';
+import PickModeSelector from './components/PickModeSelector';
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string | null>(() => window.localStorage.getItem('gemini-api-key'));
+  const [pickMode, setPickMode] = useState<PickMode>(PickMode.ACCUMULATOR_BUILDER);
+  const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
 
   const [matches, setMatches] = useState<string[]>(() => {
     try {
@@ -95,6 +98,10 @@ const App: React.FC = () => {
 
   const handleStartAnalysis = useCallback(async () => {
     if (matches.length === 0 || !apiKey) return;
+    if (pickMode === PickMode.MARKET_SPECIALIST && !selectedMarket) {
+        showToast("Please select a market for the Market Specialist mode.");
+        return;
+    }
 
     setAnalysisState(AnalysisState.ANALYZING);
     setError(null);
@@ -109,8 +116,8 @@ const App: React.FC = () => {
         setAnalysisProgress({ completed, total });
       };
 
-      const result = await analyzeMatches(matches, signal, onProgress, apiKey);
-      setPredictionTicket(result);
+      const result = await analyzeMatches(matches, signal, onProgress, apiKey, pickMode, selectedMarket, matches.length);
+      setPredictionTicket({...result, pickModeUsed: pickMode});
       setAnalysisState(AnalysisState.DONE);
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -124,7 +131,7 @@ const App: React.FC = () => {
     } finally {
         analysisAbortController.current = null;
     }
-  }, [matches, apiKey]);
+  }, [matches, apiKey, pickMode, selectedMarket]);
 
   useEffect(() => {
     const hasRunOverallAnalysis = !!predictionTicket?.overallAnalysis;
@@ -199,6 +206,14 @@ const App: React.FC = () => {
               />
               <ManualEntry 
                 onAddMatch={handleAddManualMatch}
+                disabled={isAppDisabled}
+              />
+              <PickModeSelector
+                pickMode={pickMode}
+                setPickMode={setPickMode}
+                selectedMarket={selectedMarket}
+                setSelectedMarket={setSelectedMarket}
+                matchCount={matches.length}
                 disabled={isAppDisabled}
               />
               <MatchList 

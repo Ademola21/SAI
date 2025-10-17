@@ -1,4 +1,4 @@
-import { PredictionTicket, PredictionItem, PredictionSource } from '../types';
+import { PredictionTicket, PredictionItem, PredictionSource, PickMode } from '../types';
 
 const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -63,32 +63,52 @@ export async function extractMatchesFromImage(file: File, apiKey: string): Promi
   return text.trim().split('\n').map(match => match.trim()).filter(Boolean);
 }
 
-function getMasterAnalystPrompt(match: string): string {
-    return `
-        You are a single, unified "Master Football Analyst" AI. Your process is two-fold: first you determine the best analytical strategy for a match, and then you execute a deep analysis using that strategy.
+function getPromptForPickMode(match: string, pickMode: PickMode, selectedMarket: string | null, totalMatches: number): string {
+    const ticketContext = `You are analyzing one match which is part of a larger ${totalMatches}-match ticket.`;
 
-        Analyze the following match:
+    const basePreamble = `
+        You are a world-class football analyst AI. Your task is to perform a deep, data-driven analysis of the provided match.
+        ${totalMatches > 1 ? ticketContext : ''}
+
+        Match:
         - ${match}
 
-        **Step 1: Pre-Analysis & Strategy Selection**
-        Perform a high-level pre-analysis to determine the nature of the match. Based on this, you will autonomously adopt one of three internal personas for your deep analysis. You MUST choose one:
-        1.  **Cautious Analyst:** Adopt this persona for tight, unpredictable games, derbies, or when data is conflicting. Your goal is extreme risk aversion.
-        2.  **Value Hunter:** Adopt this persona when you identify a potential market inefficiency or an outcome with better-than-implied odds. This is for finding smart, calculated risks.
-        3.  **Goals Specialist:** Adopt this persona for matches where goal-related markets appear most predictable (e.g., two high-scoring teams meeting, or a defensive stalemate).
-
-        **Step 2: Deep Analysis (using your chosen persona)**
-        You must now execute your deep analysis based on the five pillars:
+        **Analysis Process:**
+        You must execute a deep analysis based on the five pillars:
         1.  **Recent Form (Last 5 Games):** Analyze wins, losses, goals scored/conceded. Is there clear momentum?
         2.  **Head-to-Head (H2H) History:** Look for patterns of dominance or recurring outcomes (e.g., always low-scoring).
         3.  **Key Player Analysis:** Identify significant injuries, suspensions, or in-form star players that could heavily influence the game.
         4.  **Match Context & Motivation:** Is this a cup final, a dead-rubber league game, or a relegation battle? What are the stakes?
         5.  **Tactical Matchup:** Compare styles. Does one team's high-press counter the other's build-from-the-back style?
 
-        **Step 3: Prediction & Justification**
+        **Justification Requirements:**
         -   **Synthesize & Conclude:** Use web search to gather data for the five pillars and form your own expert conclusion.
         -   **Comparative Reasoning (Devil's Advocate):** You MUST consider at least two other plausible bets and briefly explain why you discarded them. You must also state the single biggest risk to your chosen prediction.
-        -   **Select Prediction:** Based on your chosen persona, select a prediction.
-            -   If **Cautious Analyst**: Your mandate is to be a **"Ticket Protector"**. Your goal is EXTREME risk aversion. You must follow a strict, data-driven, tiered evaluation process to select the single most stable and probable outcome. You must AVOID picking "Draw" as a standalone prediction.
+
+        **Your current mission is defined by the following strategy:**
+    `;
+
+    const jsonOutputRequirement = `
+        **JSON Output:**
+        Your conviction level (1-5) must be justified by the pillar alignment. Your final output MUST be a single, valid JSON object and nothing else. Do not use markdown.
+        {
+            "match": "${match}",
+            "prediction": "Your specific prediction string.",
+            "conviction": A number from 1 to 5,
+            "reasoning": {
+                "main": "A concise summary (2-3 sentences) of your rationale, mentioning the key pillars that influenced your decision.",
+                "consideredAlternatives": "State two other bets you considered and why you rejected them.",
+                "devilsAdvocate": "State the single biggest risk to your chosen prediction."
+            }
+        }
+    `;
+
+    let strategyPrompt = '';
+    switch(pickMode) {
+        case PickMode.ACCUMULATOR_BUILDER:
+            strategyPrompt = `
+                **Strategy: Accumulator Builder**
+                Your mandate is to be a **"Ticket Protector"**. Your goal is EXTREME risk aversion. **The larger the accumulator (${totalMatches} matches), the more cautious you must be.** A single failed leg ruins the entire ticket, so you must prioritize capital preservation above all else. You must follow a strict, data-driven, tiered evaluation process to select the single most stable and probable outcome. You must AVOID picking "Draw" as a standalone prediction.
 
                 **Tiered Decision Logic:**
 
@@ -120,28 +140,34 @@ function getMasterAnalystPrompt(match: string): string {
                 6.  ✅ Recent injuries/suspensions (key players missing)
 
                 **Downgrade Rule:** If your analysis finds that **3 or more** of these safety checks are uncertain or negative for your considered pick, you MUST downgrade your pick to a safer Tier. For example, if you considered a 'Home Win' (Tier 3) but Form, H2H, and Injuries are uncertain, you MUST downgrade to a 'Double Chance' (Tier 1) pick instead. Crucially, if you cannot find a pick that meets these extreme standards of safety, your correct and required output is "No Safe Bet Found".
+            `;
+            break;
+        case PickMode.VALUE_HUNTER:
+            strategyPrompt = `
+                **Strategy: Value Hunter**
+                Your goal is to find 'value' in the market. This means identifying picks where you believe the true probability is higher than the implied odds. You must be mindful of the context; for a large accumulator (${totalMatches} matches), even a value bet should have a strong statistical foundation. For smaller tickets, you can be more aggressive. Look for underrated teams, potential upsets, or market inefficiencies. Your pick can be from any standard market, but your reasoning *must* explain why you believe it has value.
+            `;
+            break;
+        case PickMode.HIGH_REWARD_SINGLE:
+            strategyPrompt = `
+                **Strategy: High-Reward Single**
+                Your goal is to find a plausible, high-odds outcome for this single match. Abandon your safety-first approach and look for a compelling narrative in the data that supports a riskier bet. You should consider markets like "Correct Score", "Win to Nil", or a "Handicap -1" bet. Your reasoning must tell a convincing story that justifies the high-reward pick. For example, if the home team is missing its two best defenders and the away striker is on fire, a '2-1 Away Win' is a plausible high-reward pick.
+            `;
+            break;
+        case PickMode.MARKET_SPECIALIST:
+            strategyPrompt = `
+                **Strategy: Market Specialist**
+                Your goal is to be a specialist for a single market. Your entire five-pillar analysis and final prediction *must* be exclusively from the **'${selectedMarket || 'Default Market'}'** market. All your reasoning should be laser-focused on determining the outcome within this specific market. For example, if the market is 'Over/Under 2.5 Goals', your analysis should focus entirely on the offensive and defensive capabilities of the teams.
+            `;
+            break;
+    }
 
-            -   If **Value Hunter** or **Goals Specialist**: You may use any standard betting market.
-
-        **Step 4: JSON Output**
-        Your conviction level (1-5) must be justified by the pillar alignment. Your final output MUST be a single, valid JSON object and nothing else. Do not use markdown.
-        {
-            "match": "${match}",
-            "strategyUsed": "The name of the persona you adopted (e.g., Cautious Analyst, Value Hunter, Goals Specialist)",
-            "prediction": "Your specific prediction string.",
-            "conviction": A number from 1 to 5,
-            "reasoning": {
-                "main": "A concise summary (2-3 sentences) of your rationale, mentioning the key pillars that influenced your decision.",
-                "consideredAlternatives": "State two other bets you considered and why you rejected them.",
-                "devilsAdvocate": "State the single biggest risk to your chosen prediction."
-            }
-        }
-    `;
+    return basePreamble + strategyPrompt + jsonOutputRequirement;
 }
 
-async function analyzeSingleMatch(match: string, signal: AbortSignal, apiKey: string): Promise<PredictionItem> {
+async function analyzeSingleMatch(match: string, signal: AbortSignal, apiKey: string, pickMode: PickMode, selectedMarket: string | null, totalMatches: number): Promise<PredictionItem> {
     const model = 'gemini-2.5-flash';
-    const prompt = getMasterAnalystPrompt(match);
+    const prompt = getPromptForPickMode(match, pickMode, selectedMarket, totalMatches);
 
     const body = {
         contents: [{ parts: [{ text: prompt }] }],
@@ -167,7 +193,7 @@ async function analyzeSingleMatch(match: string, signal: AbortSignal, apiKey: st
         const jsonString = jsonMatch[0];
         const result = JSON.parse(jsonString);
         
-        if (result && result.match && result.prediction && result.strategyUsed && typeof result.conviction === 'number' && result.reasoning && result.reasoning.main && result.reasoning.devilsAdvocate && result.reasoning.consideredAlternatives) {
+        if (result && result.match && result.prediction && typeof result.conviction === 'number' && result.reasoning && result.reasoning.main && result.reasoning.devilsAdvocate && result.reasoning.consideredAlternatives) {
             result.conviction = Math.round(result.conviction);
             result.sources = sources;
             return result as PredictionItem;
@@ -185,9 +211,11 @@ export async function analyzeMatches(
     signal: AbortSignal,
     onProgress: (completed: number, total: number) => void,
     apiKey: string,
+    pickMode: PickMode,
+    selectedMarket: string | null,
+    totalMatches: number
 ): Promise<PredictionTicket> {
     const CONCURRENCY_LIMIT = 3;
-    const totalMatches = matches.length;
     const results: (PredictionItem | null)[] = new Array(totalMatches).fill(null);
     let completedCount = 0;
     
@@ -207,7 +235,7 @@ export async function analyzeMatches(
             const { match, index } = task;
 
             try {
-                const result = await analyzeSingleMatch(match, signal, apiKey);
+                const result = await analyzeSingleMatch(match, signal, apiKey, pickMode, selectedMarket, totalMatches);
                 results[index] = result;
             } catch (error) {
                 if (signal.aborted) {
@@ -219,7 +247,6 @@ export async function analyzeMatches(
                     match: match,
                     prediction: "Analysis Failed",
                     conviction: 0,
-                    strategyUsed: 'N/A',
                     reasoning: {
                         main: reasoningText,
                         devilsAdvocate: 'N/A',

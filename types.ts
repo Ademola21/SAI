@@ -6,6 +6,13 @@ export enum AnalysisState {
   ERROR = 'ERROR',
 }
 
+export enum PickMode {
+    ACCUMULATOR_BUILDER = 'Accumulator Builder',
+    VALUE_HUNTER = 'Value Hunter',
+    HIGH_REWARD_SINGLE = 'High-Reward Single',
+    MARKET_SPECIALIST = 'Market Specialist'
+}
+
 export interface PredictionSource {
   title: string;
   uri: string;
@@ -23,11 +30,11 @@ export interface PredictionItem {
   conviction: number;
   reasoning: PredictionReasoning;
   sources: PredictionSource[];
-  strategyUsed: string;
   error?: boolean;
 }
 
 export interface PredictionTicket {
   ticket: PredictionItem[];
   overallAnalysis?: string;
+  pickModeUsed?: PickMode;
 }

@@ -35,6 +35,10 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     if (!predictionTicket) return;
 
     let ticketText = '--- SPORTYBET AI PREDICTION TICKET ---\n\n';
+    
+    if (predictionTicket.pickModeUsed) {
+        ticketText += `Strategy Used: ${predictionTicket.pickModeUsed}\n\n`;
+    }
 
     if (predictionTicket.overallAnalysis) {
         ticketText += `--- OVERALL ANALYSIS ---\n${predictionTicket.overallAnalysis}\n\n`;
@@ -46,7 +50,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         if (item.error) {
             return `Match: ${item.match}\nPrediction: ${item.prediction}\nReason: ${item.reasoning.main}`;
         }
-        return `Match: ${item.match}\nStrategy Used: ${item.strategyUsed}\nPrediction: ${item.prediction}\nConviction: ${'★'.repeat(item.conviction)}${'☆'.repeat(5 - item.conviction)}\nReasoning: ${item.reasoning.main}\nConsidered Alternatives: ${item.reasoning.consideredAlternatives}\nMain Risk: ${item.reasoning.devilsAdvocate}`;
+        return `Match: ${item.match}\nPrediction: ${item.prediction}\nConviction: ${'★'.repeat(item.conviction)}${'☆'.repeat(5 - item.conviction)}\nReasoning: ${item.reasoning.main}\nConsidered Alternatives: ${item.reasoning.consideredAlternatives}\nMain Risk: ${item.reasoning.devilsAdvocate}`;
     }).join('\n\n---\n\n');
 
     navigator.clipboard.writeText(ticketText).then(() => {
@@ -56,13 +60,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         console.error('Could not copy text: ', err);
         alert('Failed to copy ticket.');
     });
-  };
-
-  const getStrategyColor = (strategy: string) => {
-    if (strategy.toLowerCase().includes('cautious')) return 'bg-sky-500/20 text-sky-400 border-sky-500/30';
-    if (strategy.toLowerCase().includes('value')) return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-    if (strategy.toLowerCase().includes('goals')) return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
-    return 'bg-slate-700 text-slate-300';
   };
 
   const renderContent = () => {
@@ -109,17 +106,22 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         if (!predictionTicket) return <p>Analysis complete, but no ticket was generated.</p>;
         return (
             <div className="w-full">
-                <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-700">
-                    <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-500">
-                        AI Prediction Ticket
-                    </h2>
+                <div className="flex justify-between items-start mb-4 pb-4 border-b border-slate-700">
+                    <div>
+                        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-500">
+                            AI Prediction Ticket
+                        </h2>
+                        {predictionTicket.pickModeUsed && (
+                             <p className="text-sm text-slate-400 mt-1">Strategy: <span className="font-semibold text-cyan-400">{predictionTicket.pickModeUsed}</span></p>
+                        )}
+                    </div>
                     <button 
                         onClick={copyTicketToClipboard}
                         disabled={isCopied}
-                        className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors ${isCopied ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
+                        className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-colors ${isCopied ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
                     >
                         {isCopied ? <CheckIcon className="w-5 h-5"/> : <ClipboardIcon className="w-5 h-5"/>}
-                        {isCopied ? 'Copied!' : 'Copy Ticket'}
+                        {isCopied ? 'Copied!' : 'Copy'}
                     </button>
                 </div>
 
@@ -141,12 +143,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                         <div key={index} className={`p-4 rounded-lg shadow-lg ${item.error ? 'bg-red-900/30 border border-red-500/50' : 'bg-slate-800'}`}>
                             <h4 className="font-bold text-slate-100">{item.match}</h4>
                             
-                            {!item.error && (
-                                <div className={`inline-block px-2 py-0.5 mt-1.5 text-xs font-semibold rounded-full border ${getStrategyColor(item.strategyUsed)}`}>
-                                    Strategy: {item.strategyUsed}
-                                </div>
-                            )}
-
                             <p className={`font-semibold mt-2 ${item.error ? 'text-red-400' : 'text-cyan-400'}`}>{item.prediction}</p>
                             
                             {!item.error && (
@@ -227,7 +223,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     {!isApiKeySet 
                         ? "Please set your Gemini API key above to enable analysis."
                         : hasMatches 
-                            ? "Press the button below to start the AI-powered prediction." 
+                            ? "Select your strategy and press Start to begin the AI-powered prediction." 
                             : "Upload screenshots or add a match manually to build your list."}
                 </p>
                 <button
