@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PickMode } from '../types';
 
 interface PickModeSelectorProps {
     pickMode: PickMode;
     setPickMode: (mode: PickMode) => void;
-    selectedMarket: string | null;
-    setSelectedMarket: (market: string | null) => void;
+    selectedMarkets: string[];
+    setSelectedMarkets: (markets: string[]) => void;
     matchCount: number;
     disabled: boolean;
 }
@@ -23,26 +23,47 @@ const modeDescriptions: Record<PickMode, string> = {
     [PickMode.ACCUMULATOR_BUILDER]: "Finds the safest, highest-probability picks. Ideal for multi-game tickets.",
     [PickMode.VALUE_HUNTER]: "Searches for picks where the odds seem better than the true probability.",
     [PickMode.HIGH_REWARD_SINGLE]: "Finds a plausible, high-odds outcome. Only for single match analysis.",
-    [PickMode.MARKET_SPECIALIST]: "You choose the market, the AI finds the best pick within it."
+    [PickMode.MARKET_SPECIALIST]: "You choose the market(s), the AI finds the best pick within them."
 };
 
 const PickModeSelector: React.FC<PickModeSelectorProps> = ({ 
     pickMode, setPickMode, 
-    selectedMarket, setSelectedMarket, 
+    selectedMarkets, setSelectedMarkets, 
     matchCount, disabled 
 }) => {
     const isHighRewardDisabled = matchCount !== 1;
+    const [isMarketDropdownOpen, setIsMarketDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
     
     const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newMode = e.target.value as PickMode;
         if (newMode === PickMode.HIGH_REWARD_SINGLE && isHighRewardDisabled) {
-            return; // Don't allow selection if disabled
+            return;
         }
         setPickMode(newMode);
         if (newMode !== PickMode.MARKET_SPECIALIST) {
-            setSelectedMarket(null); // Reset market if not in specialist mode
+            setSelectedMarkets([]);
         }
     };
+
+    const handleMarketCheckboxChange = (market: string) => {
+        setSelectedMarkets(
+            selectedMarkets.includes(market)
+                ? selectedMarkets.filter(m => m !== market)
+                : [...selectedMarkets, market]
+        );
+    };
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsMarketDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     return (
         <div className="bg-slate-800/50 rounded-xl p-4 space-y-4">
@@ -74,22 +95,41 @@ const PickModeSelector: React.FC<PickModeSelectorProps> = ({
             </div>
 
             {pickMode === PickMode.MARKET_SPECIALIST && (
-                <div className="animate-fade-in">
-                    <label htmlFor="market-select" className="block text-sm font-medium text-slate-300">
-                        Select Market
+                <div className="animate-fade-in relative" ref={dropdownRef}>
+                    <label className="block text-sm font-medium text-slate-300">
+                        Select Market(s)
                     </label>
-                    <select
-                        id="market-select"
-                        value={selectedMarket || ''}
-                        onChange={(e) => setSelectedMarket(e.target.value)}
+                    <button
+                        type="button"
+                        onClick={() => setIsMarketDropdownOpen(!isMarketDropdownOpen)}
                         disabled={disabled}
-                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                        className="mt-1 w-full text-left pl-3 pr-10 py-2 text-base bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm disabled:cursor-not-allowed disabled:opacity-50 flex justify-between items-center"
                     >
-                        <option value="" disabled>-- Choose a market --</option>
-                        {bettingMarkets.map(market => (
-                            <option key={market} value={market}>{market}</option>
-                        ))}
-                    </select>
+                        <span className={selectedMarkets.length === 0 ? 'text-slate-400' : ''}>
+                            {selectedMarkets.length > 0 ? `${selectedMarkets.length} market(s) selected` : '-- Choose markets --'}
+                        </span>
+                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+
+                    {isMarketDropdownOpen && (
+                        <div className="absolute z-10 mt-1 w-full bg-slate-700 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            <ul className="p-2 space-y-1">
+                                {bettingMarkets.map(market => (
+                                    <li key={market}>
+                                        <label className="flex items-center space-x-3 px-2 py-1.5 rounded-md hover:bg-slate-600/50 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedMarkets.includes(market)}
+                                                onChange={() => handleMarketCheckboxChange(market)}
+                                                className="h-4 w-4 rounded bg-slate-800 border-slate-500 text-cyan-600 focus:ring-cyan-500"
+                                            />
+                                            <span className="text-sm text-slate-200">{market}</span>
+                                        </label>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

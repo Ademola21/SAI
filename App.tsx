@@ -14,7 +14,7 @@ import SavedTicketsPanel from './components/SavedTicketsPanel';
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string | null>(() => window.localStorage.getItem('gemini-api-key'));
   const [pickMode, setPickMode] = useState<PickMode>(PickMode.ACCUMULATOR_BUILDER);
-  const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
+  const [selectedMarkets, setSelectedMarkets] = useState<string[]>([]);
 
   const [matches, setMatches] = useState<string[]>(() => {
     try {
@@ -113,8 +113,8 @@ const App: React.FC = () => {
 
   const handleStartAnalysis = useCallback(async () => {
     if (matches.length === 0 || !apiKey) return;
-    if (pickMode === PickMode.MARKET_SPECIALIST && !selectedMarket) {
-        showToast("Please select a market for the Market Specialist mode.");
+    if (pickMode === PickMode.MARKET_SPECIALIST && selectedMarkets.length === 0) {
+        showToast("Please select at least one market for the Market Specialist mode.");
         return;
     }
 
@@ -131,7 +131,7 @@ const App: React.FC = () => {
         setAnalysisProgress({ completed, total });
       };
 
-      const result = await analyzeMatches(matches, signal, onProgress, apiKey, pickMode, selectedMarket, matches.length);
+      const result = await analyzeMatches(matches, signal, onProgress, apiKey, pickMode, selectedMarkets, matches.length);
       const ticketWithId: PredictionTicket = {
         ...result,
         id: `ticket-${Date.now()}`,
@@ -151,7 +151,7 @@ const App: React.FC = () => {
     } finally {
         analysisAbortController.current = null;
     }
-  }, [matches, apiKey, pickMode, selectedMarket]);
+  }, [matches, apiKey, pickMode, selectedMarkets]);
 
   useEffect(() => {
     const hasRunOverallAnalysis = !!predictionTicket?.overallAnalysis;
@@ -179,7 +179,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleReset = useCallback(() => {
+  const handleFullReset = useCallback(() => {
     setMatches([]);
     setAnalysisState(AnalysisState.IDLE);
     setPredictionTicket(null);
@@ -190,6 +190,14 @@ const App: React.FC = () => {
         analysisAbortController.current.abort();
     }
     window.localStorage.removeItem('matches');
+  }, []);
+
+  const handleAnalyzeAgain = useCallback(() => {
+    setAnalysisState(AnalysisState.IDLE);
+    setPredictionTicket(null);
+    setError(null);
+    setAnalysisProgress(null);
+    setIsAnalyzingOverall(false);
   }, []);
   
   const handleClearMatches = useCallback(() => {
@@ -260,8 +268,8 @@ const App: React.FC = () => {
               <PickModeSelector
                 pickMode={pickMode}
                 setPickMode={setPickMode}
-                selectedMarket={selectedMarket}
-                setSelectedMarket={setSelectedMarket}
+                selectedMarkets={selectedMarkets}
+                setSelectedMarkets={setSelectedMarkets}
                 matchCount={matches.length}
                 disabled={isAppDisabled}
               />
@@ -283,7 +291,8 @@ const App: React.FC = () => {
                 error={error}
                 onStart={handleStartAnalysis}
                 onCancel={handleCancelAnalysis}
-                onReset={handleReset}
+                onReset={handleFullReset}
+                onAnalyzeAgain={handleAnalyzeAgain}
                 hasMatches={matches.length > 0}
                 analysisProgress={analysisProgress}
                 isAnalyzingOverall={isAnalyzingOverall}

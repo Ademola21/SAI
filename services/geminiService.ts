@@ -63,7 +63,7 @@ export async function extractMatchesFromImage(file: File, apiKey: string): Promi
   return text.trim().split('\n').map(match => match.trim()).filter(Boolean);
 }
 
-function getPromptForPickMode(match: string, pickMode: PickMode, selectedMarket: string | null, totalMatches: number): string {
+function getPromptForPickMode(match: string, pickMode: PickMode, selectedMarkets: string[], totalMatches: number): string {
     const ticketContext = `You are analyzing one match which is part of a larger ${totalMatches}-match ticket.`;
 
     const basePreamble = `
@@ -157,7 +157,7 @@ function getPromptForPickMode(match: string, pickMode: PickMode, selectedMarket:
         case PickMode.MARKET_SPECIALIST:
             strategyPrompt = `
                 **Strategy: Market Specialist**
-                Your goal is to be a specialist for a single market. Your entire five-pillar analysis and final prediction *must* be exclusively from the **'${selectedMarket || 'Default Market'}'** market. All your reasoning should be laser-focused on determining the outcome within this specific market. For example, if the market is 'Over/Under 2.5 Goals', your analysis should focus entirely on the offensive and defensive capabilities of the teams.
+                Your goal is to be a specialist for a curated set of markets. Your entire five-pillar analysis and final prediction *must* be exclusively from the following list of approved markets: [${selectedMarkets.join(', ')}]. All your reasoning should be laser-focused on determining the outcome within this specific list. If you cannot find a suitable pick from this list, you must return "No Safe Bet Found".
             `;
             break;
     }
@@ -165,9 +165,9 @@ function getPromptForPickMode(match: string, pickMode: PickMode, selectedMarket:
     return basePreamble + strategyPrompt + jsonOutputRequirement;
 }
 
-async function analyzeSingleMatch(match: string, signal: AbortSignal, apiKey: string, pickMode: PickMode, selectedMarket: string | null, totalMatches: number): Promise<PredictionItem> {
+async function analyzeSingleMatch(match: string, signal: AbortSignal, apiKey: string, pickMode: PickMode, selectedMarkets: string[], totalMatches: number): Promise<PredictionItem> {
     const model = 'gemini-2.5-flash';
-    const prompt = getPromptForPickMode(match, pickMode, selectedMarket, totalMatches);
+    const prompt = getPromptForPickMode(match, pickMode, selectedMarkets, totalMatches);
 
     const body = {
         contents: [{ parts: [{ text: prompt }] }],
@@ -212,7 +212,7 @@ export async function analyzeMatches(
     onProgress: (completed: number, total: number) => void,
     apiKey: string,
     pickMode: PickMode,
-    selectedMarket: string | null,
+    selectedMarkets: string[],
     totalMatches: number
 ): Promise<Omit<PredictionTicket, 'id' | 'savedAt'>> {
     const CONCURRENCY_LIMIT = 3;
@@ -235,7 +235,7 @@ export async function analyzeMatches(
             const { match, index } = task;
 
             try {
-                const result = await analyzeSingleMatch(match, signal, apiKey, pickMode, selectedMarket, totalMatches);
+                const result = await analyzeSingleMatch(match, signal, apiKey, pickMode, selectedMarkets, totalMatches);
                 results[index] = result;
             } catch (error) {
                 if (signal.aborted) {

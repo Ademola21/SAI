@@ -12,6 +12,7 @@ interface AnalysisPanelProps {
   onStart: () => void;
   onCancel: () => void;
   onReset: () => void;
+  onAnalyzeAgain: () => void;
   hasMatches: boolean;
   analysisProgress: { completed: number; total: number } | null;
   isAnalyzingOverall: boolean;
@@ -27,6 +28,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   onStart,
   onCancel,
   onReset,
+  onAnalyzeAgain,
   hasMatches,
   analysisProgress,
   isAnalyzingOverall,
@@ -205,10 +207,15 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                         {isTicketSaved ? 'Saved' : 'Save Analysis'}
                     </button>
                     <button
-                        onClick={onReset}
+                        onClick={onAnalyzeAgain}
                         className="flex-1 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
                     >
-                        Start New Analysis
+                        Analyze Again
+                    </button>
+                </div>
+                <div className="mt-3 text-center">
+                    <button onClick={onReset} className="text-sm text-slate-500 hover:text-slate-400 hover:underline">
+                        Clear All & Start Over
                     </button>
                 </div>
             </div>
